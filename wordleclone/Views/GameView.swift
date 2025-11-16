@@ -11,6 +11,8 @@ struct GameView: View {
     @EnvironmentObject var dm: WordleDataModel
     @State private var showSettings = false
     @State private var showHelp = false
+    @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
+
     var body: some View {
         ZStack {
             NavigationView {
@@ -104,6 +106,11 @@ struct GameView: View {
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showHelp) {
             HelpView()
+        }
+        .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
+            OnboardingContainerView()
+                .environmentObject(dm)
+                .interactiveDismissDisabled()
         }
     }
 }

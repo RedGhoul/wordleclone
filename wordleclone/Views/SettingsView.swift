@@ -12,6 +12,7 @@ struct SettingsView: View {
     @EnvironmentObject var dm: WordleDataModel
     @Environment(\.dismiss) var dismiss
     @State private var showDifficultyPicker = false
+    @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
 
     var body: some View {
         NavigationView {
@@ -61,6 +62,31 @@ struct SettingsView: View {
                                 Text("System").tag(ColorScheme.unspecified)
                             }
                             .pickerStyle(.segmented)
+                        }
+
+                        Divider()
+
+                        // Onboarding Section
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Tutorial")
+                                .font(.headline)
+                            Button(action: {
+                                hasCompletedOnboarding = false
+                                dismiss()
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.counterclockwise")
+                                    Text("Replay Tutorial")
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                }
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                            Text("Review the game rules and set difficulty again")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
 
                         Spacer()

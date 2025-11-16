@@ -11,6 +11,8 @@ struct GameView: View {
     @EnvironmentObject var dm: WordleDataModel
     @State private var showSettings = false
     @State private var showHelp = false
+    @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
+
     var body: some View {
         ZStack {
             NavigationView {
@@ -20,12 +22,12 @@ struct GameView: View {
                     }
                     Spacer()
                     VStack(spacing: 3) {
-                        ForEach(0...5, id: \.self) { index in
+                        ForEach(0..<dm.maxGuesses, id: \.self) { index in
                             GuessView(guess: $dm.guesses[index])
                                 .modifier(Shake(animatableData: CGFloat(dm.incorrectAttempts[index])))
                         }
                     }
-                    .frame(width: Global.boardWidth, height: 6 * Global.boardWidth / 5)
+                    .frame(width: Global.boardWidth, height: CGFloat(dm.maxGuesses) * Global.boardWidth / 5)
                     Spacer()
                     Keyboard()
                         .scaleEffect(Global.keyboardScale)
@@ -51,6 +53,15 @@ struct GameView: View {
                                     Text("New")
                                         .foregroundColor(.primary)
                                 }
+                            }
+                            if dm.difficulty.allowsHints && dm.inPlay {
+                                Button {
+                                    dm.getHint()
+                                } label: {
+                                    Image(systemName: dm.hintAvailable ? "lightbulb.fill" : "lightbulb.slash")
+                                        .foregroundColor(dm.hintAvailable ? .yellow : .gray)
+                                }
+                                .disabled(!dm.hintAvailable)
                             }
                             Button {
                                 showHelp.toggle()
@@ -95,6 +106,11 @@ struct GameView: View {
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showHelp) {
             HelpView()
+        }
+        .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
+            OnboardingContainerView()
+                .environmentObject(dm)
+                .interactiveDismissDisabled()
         }
     }
 }

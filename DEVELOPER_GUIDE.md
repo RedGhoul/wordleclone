@@ -10,7 +10,7 @@
 - [Game Logic](#game-logic)
 - [UI Components](#ui-components)
 - [State Management](#state-management)
-- [Persistence & iCloud Sync](#persistence--icloud-sync)
+- [Persistence](#persistence)
 
 ---
 
@@ -23,7 +23,7 @@ Welcome to the Wordle Clone developer guide! This document will help you underst
 A fully-featured iOS Wordle clone built with **Swift** and **SwiftUI**, featuring:
 - ✅ 6 attempts to guess a 5-letter word
 - ✅ Hard Mode with enforced rules
-- ✅ Statistics tracking with iCloud sync
+- ✅ Statistics tracking with local persistence
 - ✅ Dark/Light mode support
 - ✅ Smooth animations (flip cards, shake effects)
 - ✅ Share results functionality
@@ -32,7 +32,7 @@ A fully-featured iOS Wordle clone built with **Swift** and **SwiftUI**, featurin
 - **Language:** Swift 5
 - **Framework:** SwiftUI
 - **Platform:** iOS (iPhone & iPad)
-- **Persistence:** UserDefaults + iCloud Key-Value Store
+- **Persistence:** UserDefaults (local storage)
 - **Architecture:** MVVM (Model-View-ViewModel)
 
 ---
@@ -71,7 +71,7 @@ The project follows a clean **MVVM architecture** with clear separation of conce
 ┌─────────────────────────────────────────────────────────┐
 │                   PERSISTENCE LAYER                     │
 │   @AppStorage - Local preferences                      │
-│   NSUbiquitousKeyValueStore - iCloud sync              │
+│   UserDefaults - Statistics storage                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -86,8 +86,7 @@ wordleclone/
 ├── Models/                           # 📦 Data models
 │   ├── Global.swift                  # Constants, screen dimensions, word list
 │   ├── Guess.swift                   # Single guess data structure
-│   ├── Statistic.swift               # Statistics data & iCloud sync
-│   └── UbiquitousStore.swift         # iCloud property wrapper
+│   └── Statistic.swift               # Statistics data & local persistence
 │
 ├── ViewModels/                       # 🧠 Business logic
 │   ├── WordleDataModel.swift        # Main game state & logic
@@ -113,7 +112,7 @@ wordleclone/
 │
 ├── Assets.xcassets/                  # 🖼️ Images, colors, icons
 ├── Launch Screen.storyboard          # Launch screen
-└── wordleclone.entitlements          # App capabilities (iCloud)
+└── wordleclone.entitlements          # App capabilities
 ```
 
 ---
@@ -158,7 +157,7 @@ struct wordlecloneApp: App {
 │    WordleDataModel.newGame()                                │
 │    - Pick random word from 1000+ word list                  │
 │    - Reset guesses array (6 empty Guess objects)            │
-│    - Load previous statistics from iCloud                   │
+│    - Load previous statistics from UserDefaults            │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -189,7 +188,7 @@ struct wordlecloneApp: App {
 │    - Win: Show toast → delay 2s → show stats modal         │
 │    - Loss: Show correct word → delay 2s → show stats       │
 │    - Update statistics (Statistic.update)                   │
-│    - Sync to iCloud automatically                           │
+│    - Save to UserDefaults automatically                     │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -307,22 +306,30 @@ struct Guess {
 
 ### Statistic (Models/Statistic.swift)
 
-**Purpose:** Tracks game statistics with iCloud sync.
+**Purpose:** Tracks game statistics with local persistence.
 
 ```swift
-class Statistic: ObservableObject, Codable {
-    @UbiquitousStore("currentStreak") var currentStreak = 0
-    @UbiquitousStore("maxStreak") var maxStreak = 0
-    @UbiquitousStore("winDistribution") var frequencies = [0,0,0,0,0,0]
-    @UbiquitousStore("lastGame") var lastGame = ""
+struct Statistic: Codable {
+    var frequencies = [Int](repeating: 0, count: 6)
+    var games = 0
+    var streak = 0
+    var maxStreak = 0
 
-    var games: Int { frequencies.reduce(0, +) }
-    var wins: Int { frequencies.reduce(0, +) }
-    var winPercent: Int { games == 0 ? 0 : wins * 100 / games }
+    var wins: Int {
+        frequencies.reduce(0, +)
+    }
 
-    func update(index: Int, word: String) {
+    func saveStat() {
+        // Saves to UserDefaults using JSON encoding
+    }
+
+    static func loadStat() -> Statistic {
+        // Loads from UserDefaults
+    }
+
+    mutating func update(win: Bool, index: Int? = nil) {
         // Update frequencies, streaks
-        // Sync to iCloud automatically via @UbiquitousStore
+        // Automatically saves to local storage
     }
 }
 ```
@@ -440,7 +447,6 @@ VStack {
 | `@StateObject` | Create and own observable object | `@StateObject var dm = WordleDataModel()` |
 | `@EnvironmentObject` | Share objects across view hierarchy | `.environmentObject(dm)` |
 | `@AppStorage` | UserDefaults persistence | `@AppStorage("hardMode") var hardMode` |
-| `@UbiquitousStore` | iCloud Key-Value Store (custom wrapper) | `@UbiquitousStore("currentStreak") var currentStreak` |
 
 ---
 
@@ -460,45 +466,50 @@ GuessView displays new letter in current row
 
 ---
 
-## Persistence & iCloud Sync
+## Persistence
 
-### UbiquitousStore Property Wrapper
+### Local Storage with UserDefaults
 
-Custom wrapper for seamless iCloud sync:
+Statistics are persisted locally using UserDefaults with JSON encoding:
 
 ```swift
-@propertyWrapper
-struct UbiquitousStore<T: Codable> {
-    let key: String
-    let defaultValue: T
+struct Statistic: Codable {
+    var frequencies = [Int](repeating: 0, count: 6)
+    var games = 0
+    var streak = 0
+    var maxStreak = 0
 
-    var wrappedValue: T {
-        get {
-            guard let data = NSUbiquitousKeyValueStore.default.data(forKey: key),
-                  let value = try? JSONDecoder().decode(T.self, from: data)
-            else { return defaultValue }
-            return value
+    func saveStat() {
+        if let encoded = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(encoded, forKey: "Stat")
         }
-        set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                NSUbiquitousKeyValueStore.default.set(data, forKey: key)
-                NSUbiquitousKeyValueStore.default.synchronize()
+    }
+
+    static func loadStat() -> Statistic {
+        if let savedStat = UserDefaults.standard.object(forKey: "Stat") as? Data {
+            if let currentStat = try? JSONDecoder().decode(Statistic.self, from: savedStat) {
+                return currentStat
+            } else {
+                return Statistic()
             }
+        } else {
+            return Statistic()
         }
     }
 }
 ```
 
 **How it works:**
-1. Statistics are stored in `NSUbiquitousKeyValueStore`
-2. Apple syncs data across user's devices automatically
-3. No manual sync code needed - write to property, it syncs!
+1. Statistics are encoded to JSON and stored in `UserDefaults`
+2. Data persists locally on the device
+3. Loaded on app launch via `loadStat()`
+4. Saved automatically after each game via `update()` method
 
-**What gets synced:**
+**What gets persisted:**
 - Current streak
 - Max streak
 - Win distribution (1-6 attempts)
-- Last game date
+- Total games played
 
 ---
 

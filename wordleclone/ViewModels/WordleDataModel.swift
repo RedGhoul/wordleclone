@@ -12,8 +12,21 @@ class WordleDataModel: ObservableObject {
     @Published var incorrectAttempts = [Int](repeating: 0, count: 6)
     @Published var toastText: String?
     @Published var showStats = false
+    @Published var hintAvailable = false
     @AppStorage("hardMode") var hardMode = false
-    
+    @AppStorage("difficulty") var difficulty: DifficultyLevel = .standard {
+        didSet {
+            // Auto-enable hard mode for Hard and Expert difficulties
+            if difficulty.requiresHardMode {
+                hardMode = true
+            }
+            // Reset hint availability for beginner mode
+            if difficulty.allowsHints {
+                hintAvailable = true
+            }
+        }
+    }
+
     var keyColors = [String : Color]()
     var matchedLetters = [String]()
     var misplacedLetters = [String]()
@@ -25,6 +38,10 @@ class WordleDataModel: ObservableObject {
     var gameOver = false
     var toastWords = ["Genius", "Impressive", "Splendid", "Magnificent", "Great", "Phew"]
     var currentStat: Statistic
+
+    var maxGuesses: Int {
+        difficulty.maxAttempts
+    }
     
     var gameStarted: Bool {
         !currentWord.isEmpty || tryIndex > 0
@@ -42,17 +59,32 @@ class WordleDataModel: ObservableObject {
     // MARK: - SETUP
     func newGame() {
         populateDefaults()
-        selectedWord = Global.commonWords.randomElement()!
+        selectedWord = getWordList().randomElement()!
         correctlyPlacedLetters = [String](repeating: "-", count: 5)
         currentWord = ""
         inPlay = true
         tryIndex = 0
         gameOver = false
+        // Reset hint for beginner mode
+        if difficulty.allowsHints {
+            hintAvailable = true
+        }
     }
-    
+
+    func getWordList() -> [String] {
+        switch difficulty.wordListFilter {
+        case .common:
+            // For beginner mode, use first 500 most common words
+            return Array(Global.commonWords.prefix(500))
+        case .all:
+            return Global.commonWords
+        }
+    }
+
     func populateDefaults() {
         guesses = []
-        for index in 0...5 {
+        incorrectAttempts = [Int](repeating: 0, count: maxGuesses)
+        for index in 0..<maxGuesses {
             guesses.append(Guess(index: index))
         }
         //reset keyboard colors
@@ -93,7 +125,7 @@ class WordleDataModel: ObservableObject {
                 setCurrentGuessColors()
                 tryIndex += 1
                 currentWord = ""
-                if tryIndex == 6 {
+                if tryIndex == maxGuesses {
                     currentStat.update(win: false)
                     gameOver = true
                     inPlay = false
@@ -228,7 +260,7 @@ class WordleDataModel: ObservableObject {
                 }
             }
             let resultString = """
-    Wordle \(stat.games) \(tryIndex < 6 ? "\(tryIndex + 1)/6" : "")
+    Wordle \(stat.games) \(tryIndex < maxGuesses ? "\(tryIndex + 1)/\(maxGuesses)" : "")
     \(guessString)
     """
             print(resultString)
@@ -248,4 +280,25 @@ class WordleDataModel: ObservableObject {
                 break
             }
         }
+
+    // MARK: - HINT SYSTEM (Beginner Mode)
+    func getHint() {
+        guard difficulty.allowsHints else { return }
+        guard hintAvailable else {
+            showToast(with: "Hint already used!")
+            return
+        }
+
+        // Find a letter that hasn't been guessed yet
+        let guessedLetters = Set(guesses.prefix(tryIndex).flatMap { $0.word.filter { $0 != " " } }.map { String($0) })
+        let answerLetters = Set(selectedWord.map { String($0) })
+        let unguessedInAnswer = answerLetters.subtracting(guessedLetters)
+
+        if let letter = unguessedInAnswer.randomElement() {
+            showToast(with: "Hint: The word contains '\(letter)'")
+            hintAvailable = false
+        } else {
+            showToast(with: "No hints available - you've found all the letters!")
+        }
+    }
 }
